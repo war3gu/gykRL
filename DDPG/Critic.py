@@ -1,67 +1,117 @@
 
 import tensorflow as tf
 import numpy as np
-from keras.models import Model
-from keras.layers import Dense,Input,BatchNormalization,Add,Activation,Lambda
-from keras.optimizers import Adam
-import keras.backend as K
+import math
 
+
+LAYER1_SIZE = 400
+LAYER2_SIZE = 300
+LEARNING_RATE = 1e-3
+TAU = 0.001
+L2 = 0.01
 
 class Critic:
-    def __init__(self, sess, action_space, observation_space):
+    """docstring for CriticNetwork"""
+    def __init__(self ,sess , action_space, observation_space):
+        self.time_step = 0
         self.sess = sess
-        self.action_size = action_space.shape[0]
-        self.observation_size = observation_space.shape[0]
-        self.lr = 0.002
-        self.tau = 0.01
-        self.mainModel, self.state, self.actions = self._build_model()
-        self.targetModel, _, _ = self._build_model()
-        self.action_grads = tf.gradients(self.mainModel.output, self.actions)
-        # self.funcAction_grads = K.function([self.state, self.actions], [self.action_grads, self.mainModel.output])#尝试使用function
+        self.state_dim = observation_space.shape[0]
+        self.action_dim = action_space.shape[0]
+        # create q network
+        self.state_input, \
+        self.action_input, \
+        self.q_value_output, \
+        self.net = self.create_q_network(self.state_dim ,self.action_dim)
 
+        # create target q network (the same structure with q network)
+        self.target_state_input, \
+        self.target_action_input, \
+        self.target_q_value_output, \
+        self.target_update = self.create_target_q_network(self.state_dim ,self.action_dim ,self.net)
 
+        self.create_training_method()
 
-    def _build_model(self):
-        input_obs = Input(shape=(self.observation_size,))
-        input_actions = Input(shape=(self.action_size,))
-        h = Dense(64)(input_obs)
-        h = Activation('relu')(h)
-        # h = BatchNormalization()(h)
-        temp1 = Dense(64)(h)
-        action_abs = Dense(64)(input_actions)
-        # action_abs = Activation('relu')(action_abs)
-        # action_abs = BatchNormalization()(action_abs)
-        h = Add()([temp1, action_abs])
-        # h = Dense(64)(h)
-        h = Activation('relu')(h)
-        # h = BatchNormalization()(h)
-        pred = Dense(1, kernel_initializer='random_uniform')(h)
-        model = Model(inputs=[input_obs, input_actions], outputs=pred)
-        model.compile(optimizer='Adam', loss='mean_squared_error')
-        return model, input_obs, input_actions
+        # initialization
+        self.sess.run(tf.initialize_all_variables())
 
-    def action_gradients(self, states, actions):
-        # x1, x2 = self.funcAction_grads([states, actions])
-        # return x1[0]
-        r = self.sess.run(self.action_grads, feed_dict={self.state: states, self.actions: actions})
+        self.update_target()
 
-        return r[0]
+    def create_training_method(self):
+        # Define training optimizer
+        self.y_input = tf.placeholder("float" ,[None ,1])
+        weight_decay = tf.add_n([L2 * tf.nn.l2_loss(var) for var in self.net])
+        self.cost = tf.reduce_mean(tf.square(self.y_input - self.q_value_output)) + weight_decay
+        self.optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(self.cost)
+        self.action_gradients = tf.gradients(self.q_value_output ,self.action_input)
 
-    def predict(self, state, actions):
-        x = np.ndarray((actions.shape[1], self.action_size))
-        for j in range(actions.shape[1]):
-            x[j] = np.concatenate([y[j] for y in actions])
-        return self.mainModel.predict([state, x])
+    def create_q_network(self ,state_dim ,action_dim):
+        # the layer size could be changed
+        layer1_size = LAYER1_SIZE
+        layer2_size = LAYER2_SIZE
 
-    def predict_target(self, state, actions):
-        return self.targetModel.predict([state, actions])
+        state_input = tf.placeholder("float" ,[None ,state_dim])
+        action_input = tf.placeholder("float" ,[None ,action_dim])
+
+        W1 = self.variable([state_dim ,layer1_size] ,state_dim)
+        b1 = self.variable([layer1_size] ,state_dim)
+        W2 = self.variable([layer1_size ,layer2_size] , layer1_size +action_dim)
+        W2_action = self.variable([action_dim ,layer2_size] , layer1_size +action_dim)
+        b2 = self.variable([layer2_size] , layer1_size +action_dim)
+        W3 = tf.Variable(tf.random_uniform([layer2_size ,1] ,-3e-3 ,3e-3))
+        b3 = tf.Variable(tf.random_uniform([1] ,-3e-3 ,3e-3))
+
+        layer1 = tf.nn.relu(tf.matmul(state_input ,W1) + b1)
+        layer2 = tf.nn.relu(tf.matmul(layer1 ,W2) + tf.matmul(action_input ,W2_action) + b2)
+        q_value_output = tf.identity(tf.matmul(layer2 ,W3) + b3)
+
+        return state_input ,action_input ,q_value_output ,[W1 ,b1 ,W2 ,W2_action ,b2 ,W3 ,b3]
+
+    def create_target_q_network(self ,state_dim ,action_dim ,net):
+        state_input = tf.placeholder("float" ,[None ,state_dim])
+        action_input = tf.placeholder("float" ,[None ,action_dim])
+
+        ema = tf.train.ExponentialMovingAverage(decay= 1 -TAU)
+        target_update = ema.apply(net)
+        target_net = [ema.average(x) for x in net]
+
+        layer1 = tf.nn.relu(tf.matmul(state_input ,target_net[0]) + target_net[1])
+        layer2 = tf.nn.relu(tf.matmul(layer1 ,target_net[2]) + tf.matmul(action_input ,target_net[3]) + target_net[4])
+        q_value_output = tf.identity(tf.matmul(layer2 ,target_net[5]) + target_net[6])
+
+        return state_input ,action_input ,q_value_output ,target_update
 
     def update_target(self):
-        wMain = self.mainModel.get_weights()
-        wTarget = self.targetModel.get_weights()
-        for i in range(len(wMain)):
-            wTarget[i] = self.tau * wMain[i] + (1 - self.tau) * wTarget[i]
-        self.targetModel.set_weights(wTarget)
+        self.sess.run(self.target_update)
 
-    def train(self, state, actions, labels):
-        self.mainModel.train_on_batch([state, actions], labels)
+    def train(self ,state_batch ,action_batch, y_batch):
+        self.time_step += 1
+        self.sess.run(self.optimizer ,feed_dict={
+            self.y_input :y_batch,
+            self.state_input :state_batch,
+            self.action_input :action_batch
+        })
+
+    def get_action_gradients(self, state_batch, action_batch):
+        return self.sess.run(self.action_gradients ,feed_dict={
+            self.state_input :state_batch,
+            self.action_input :action_batch
+        })[0]
+
+    def predict_target(self ,state_batch ,action_batch):
+        return self.sess.run(self.target_q_value_output ,feed_dict={
+            self.target_state_input :state_batch,
+            self.target_action_input :action_batch
+        })
+    def variable(self, shape, f):
+        return tf.Variable(tf.random_uniform(shape, - 1 / math.sqrt(f), 1 / math.sqrt(f)))
+
+'''
+    def q_value(self ,state_batch ,action_batch):
+        return self.sess.run(self.q_value_output ,feed_dict={
+            self.state_input :state_batch,
+            self.action_input :action_batch})
+'''
+
+
+
+

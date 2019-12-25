@@ -12,7 +12,17 @@ class ReplayMemory(object):
 
 	def add(self,state,action,reward,done,next_state, prob):
 		exp = (state,action,reward,done,next_state,prob)
-		self.buffer.append(exp) 
+
+		a = self.buffer.maxlen
+
+		b = len(self.buffer)
+
+		if  a == b:
+			self.buffer.popleft()
+			self.buffer.append(exp)
+		else:
+			self.buffer.append(exp)
+
 	
 	def size(self):
 		return len(self.buffer)

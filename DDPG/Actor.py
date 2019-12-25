@@ -1,68 +1,96 @@
-
 import tensorflow as tf
 import numpy as np
-from keras.models import Model
-from keras.layers import Dense,Input,BatchNormalization,Add,Activation,Lambda
-from keras.optimizers import Adam
-import keras.backend as K
+import math
+
+
+# Hyper Parameters
+LAYER1_SIZE = 400
+LAYER2_SIZE = 300
+LEARNING_RATE = 1e-4
+TAU = 0.001
+BATCH_SIZE = 64
 
 class Actor:
-    def __init__(self, sess, action_space, observation_space):
-        self.sess = sess
-        self.action_size = action_space.shape[0]
-        self.observation_size = observation_space.shape[0]
-        self.lr = 0.002
-        self.tau = 0.01
-        self.action_bound = action_space.high
+	"""docstring for ActorNetwork"""
+	def __init__(self,sess, action_space, observation_space):
+		self.sess = sess
+		self.state_dim = observation_space.shape[0]
+		self.action_dim = action_space.shape[0]
+		# create actor network
+		self.state_input,self.action_output,self.net = self.create_network(self.state_dim,self.action_dim)
 
-        self.mainModel, self.mainModel_weights, self.mainModel_state = self._build_model()
-        self.targetModel, self.targetModel_weights, _ = self._build_model()
+		# create target actor network
+		self.target_state_input,self.target_action_output,self.target_update,self.target_net = self.create_target_network(self.state_dim,self.action_dim,self.net)
 
-        self.action_gradient = Input(shape=(self.action_size, ))
-        #self.action_gradient = tf.placeholder(tf.float32, [None, self.action_size])  # actor算出来的Q对action的梯度
-        self.params_grad = tf.gradients(self.mainModel.output, self.mainModel_weights, -self.action_gradient)  # 综合action对actor参数的梯度得到Q对actor参数的梯度
-        #self.action_gradient = Input(shape=(self.action_size,))
-        #self.params_grad = K.gradients(self.mainModel.output, self.mainModel_weights, -self.action_gradient)
+		# define training rules
+		self.create_training_method()
 
-        grads = zip(self.params_grad, self.mainModel_weights)  # Q对actor参数梯度，actor参数
-        self.optimize = tf.train.AdamOptimizer(self.lr).apply_gradients(grads)  # 将actor参数向Q增大方向移动
+		self.sess.run(tf.initialize_all_variables())
+
+		self.update_target()
+		#self.load_network()
+
+	def create_training_method(self):
+		self.q_gradient_input = tf.placeholder("float",[None,self.action_dim])
+		self.parameters_gradients = tf.gradients(self.action_output,self.net,-self.q_gradient_input)
+		self.optimizer = tf.train.AdamOptimizer(LEARNING_RATE).apply_gradients(zip(self.parameters_gradients,self.net))
+
+	def create_network(self,state_dim,action_dim):
+		layer1_size = LAYER1_SIZE
+		layer2_size = LAYER2_SIZE
+
+		state_input = tf.placeholder("float",[None,state_dim])
+
+		W1 = self.variable([state_dim,layer1_size],state_dim)
+		b1 = self.variable([layer1_size],state_dim)
+		W2 = self.variable([layer1_size,layer2_size],layer1_size)
+		b2 = self.variable([layer2_size],layer1_size)
+		W3 = tf.Variable(tf.random_uniform([layer2_size,action_dim],-3e-3,3e-3))
+		b3 = tf.Variable(tf.random_uniform([action_dim],-3e-3,3e-3))
+
+		layer1 = tf.nn.relu(tf.matmul(state_input,W1) + b1)
+		layer2 = tf.nn.relu(tf.matmul(layer1,W2) + b2)
+		action_output = tf.tanh(tf.matmul(layer2,W3) + b3)
+
+		return state_input,action_output,[W1,b1,W2,b2,W3,b3]
+
+	def create_target_network(self,state_dim,action_dim,net):
+		state_input = tf.placeholder("float",[None,state_dim])
+		ema = tf.train.ExponentialMovingAverage(decay=1-TAU)
+		target_update = ema.apply(net)
+		target_net = [ema.average(x) for x in net]
+
+		layer1 = tf.nn.relu(tf.matmul(state_input,target_net[0]) + target_net[1])
+		layer2 = tf.nn.relu(tf.matmul(layer1,target_net[2]) + target_net[3])
+		action_output = tf.tanh(tf.matmul(layer2,target_net[4]) + target_net[5])
+
+		return state_input,action_output,target_update,target_net
+
+	def update_target(self):
+		self.sess.run(self.target_update)
+
+	def train(self,state_batch,q_gradient_batch):
+		self.sess.run(self.optimizer,feed_dict={
+			self.q_gradient_input:q_gradient_batch,
+			self.state_input:state_batch
+			})
+
+	def predict(self,state_batch):
+		return self.sess.run(self.action_output,feed_dict={
+			self.state_input:state_batch
+			})
+
+	def act(self,state):
+		return self.sess.run(self.action_output,feed_dict={
+			self.state_input:[state]
+			})[0]
 
 
+	def predict_target(self,state_batch):
+		return self.sess.run(self.target_action_output,feed_dict={
+			self.target_state_input:state_batch
+			})
 
-
-    def _build_model(self):
-        input_obs = Input(shape=(self.observation_size,))
-        h = Dense(64)(input_obs)
-        h = Activation('relu')(h)
-        # h = BatchNormalization()(h)
-        h = Dense(64)(h)
-        h = Activation('relu')(h)
-        # h = BatchNormalization()(h)
-        h = Dense(self.action_size)(h)
-        h = Activation('tanh')(h)
-        pred = Lambda(lambda h: h * self.action_bound)(h)
-        model = Model(inputs=input_obs, outputs=pred)
-        model.compile(optimizer='Adam', loss='categorical_crossentropy')
-        return model, model.trainable_weights, input_obs
-
-    def act(self, state, noise):
-        act = self.mainModel.predict(state) + noise
-        return act
-
-    def predict(self, state):
-        return self.mainModel.predict(state)
-
-    def predict_target(self, state):
-        return self.targetModel.predict(state)
-
-
-    def update_target(self):
-        wMain = self.mainModel.get_weights()
-        wTarget = self.targetModel.get_weights()
-        for i in range(len(wMain)):
-            wTarget[i] = self.tau * wMain[i] + (1 - self.tau) * wTarget[i]
-        self.targetModel.set_weights(wTarget)
-
-    def train(self, state, action_grad):
-        self.sess.run(self.optimize, feed_dict={self.mainModel_state: state, self.action_gradient: action_grad})
-
+	# f fan-in size
+	def variable(self,shape,f):
+		return tf.Variable(tf.random_uniform(shape,-1/math.sqrt(f),1/math.sqrt(f)))
