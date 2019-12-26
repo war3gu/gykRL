@@ -57,8 +57,8 @@ class Actor:
 	def create_target_network(self,state_dim,action_dim,net):
 		state_input = tf.placeholder("float",[None,state_dim])
 		ema = tf.train.ExponentialMovingAverage(decay=1-TAU)
-		target_update = ema.apply(net)
-		target_net = [ema.average(x) for x in net]
+		target_update = ema.apply(net)   #apply是根据net和已有的ema内部参数移动平均更新ema内部参数
+		target_net = [ema.average(x) for x in net]  #取出指数移动平均后更新的ema内部参数
 
 		layer1 = tf.nn.relu(tf.matmul(state_input,target_net[0]) + target_net[1])
 		layer2 = tf.nn.relu(tf.matmul(layer1,target_net[2]) + target_net[3])

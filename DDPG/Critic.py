@@ -85,11 +85,12 @@ class Critic:
 
     def train(self ,state_batch ,action_batch, y_batch):
         self.time_step += 1
-        self.sess.run(self.optimizer ,feed_dict={
+        fetch1, fetch2 = self.sess.run(fetches=[self.optimizer, self.cost] ,feed_dict={
             self.y_input :y_batch,
             self.state_input :state_batch,
             self.action_input :action_batch
         })
+        return fetch2
 
     def get_action_gradients(self, state_batch, action_batch):
         return self.sess.run(self.action_gradients ,feed_dict={

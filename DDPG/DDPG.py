@@ -18,7 +18,9 @@ from ExplorationNoise import OrnsteinUhlenbeckActionNoise  as OUNoise
 def build_summaries():
 	episode_reward =   tf.Variable(0.)
 	tf.summary.scalar("Reward",episode_reward)
-	summary_vars = [episode_reward]
+	closs = tf.Variable(0.)
+	tf.summary.scalar("closs",closs)
+	summary_vars = [episode_reward, closs]
 	summary_ops = tf.summary.merge_all()
 	return summary_ops, summary_vars
 
@@ -47,7 +49,11 @@ if __name__=='__main__':
 
     episode_reward = 0
 
-    step = 1
+    closs = 0
+
+    trainCount = 1
+
+    episode = 1
 
     while True:
         #env.render()
@@ -74,22 +80,28 @@ if __name__=='__main__':
                     yi.append(reward_b[k] + 0.99 * targetQ[k])
 
             yx = np.reshape(yi, (int(64), 1))  # critic的目标
-            critic.train(state_b, action_b, yx)
-
+            closs += critic.train(state_b, action_b, yx)
+            #print('closs = ', closs)
             actions_pred = actor.predict(state_b)  # actions_pred与a_batch不一样，a_batch是加了噪声的
             grads = critic.get_action_gradients(state_b, actions_pred)  # 算出Q对action的梯度
             actor.train(state_b, grads)  # actor的参数朝Q变大的方向上稍微移动一点
             actor.update_target()
             critic.update_target()
 
-            #replayMemory.clear()
+            trainCount += 1
+
         if done:
 
-            summary_str = sess.run(summary_ops, feed_dict={summary_vars[0]: episode_reward})
-            writer.add_summary(summary_str, step)
+            cavTrainLoss = closs/trainCount
+
+            if cavTrainLoss == 0:
+                cavTrainLoss = 100    #closs图看起来更正常
+
+            summary_str = sess.run(summary_ops, feed_dict={summary_vars[0]: episode_reward, summary_vars[1]:cavTrainLoss})
+            writer.add_summary(summary_str, episode)
             writer.flush()
 
-            print("step = ", step, "episode_reward = ", episode_reward)
+            print("episode = ", episode, "episode_reward = ", episode_reward, "cavTrainLoss = ", cavTrainLoss)
 
             state = env.reset()
 
@@ -97,5 +109,9 @@ if __name__=='__main__':
 
             episode_reward = 0
 
-            step += 1
+            closs = 0
+
+            trainCount = 1
+
+            episode += 1
 
