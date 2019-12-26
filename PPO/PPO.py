@@ -1,6 +1,11 @@
 
 
-#from wandb import magic
+import sys, os
+curr_dir = os.path.dirname(os.path.realpath(__file__))
+upPath = curr_dir+'/../'
+sys.path.append(upPath)
+
+
 
 import gym
 
