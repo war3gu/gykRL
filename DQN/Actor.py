@@ -3,8 +3,8 @@ import random
 import gym
 import numpy as np
 from collections import deque
-from keras.models import Sequential
-from keras.layers import Dense
+from keras.models import Sequential, Model
+from keras.layers import Dense, Input
 from keras.optimizers import Adam
 
 
@@ -19,12 +19,15 @@ class Actor:
         return
 
     def _build_model(self):
-        model = Sequential()
-        model.add(Dense(24, input_dim=self.observation_size, activation='relu'))
-        model.add(Dense(24, activation='relu'))
-        model.add(Dense(self.action_size, activation='linear'))
+        state_obs = Input(shape=(self.observation_size,), name='state_obs')
+        hidden = Dense(24, activation='relu')(state_obs)
+        hidden = Dense(24, activation='relu')(hidden)
+        action_value_out = Dense(self.action_size, activation='linear')(hidden)
+
+        model = Model(inputs=[state_obs], outputs=[action_value_out])
         model.compile(loss='mse',
                       optimizer=Adam(lr=self.learning_rate))
+
         return model
 
     def predict(self, obs):  #具体的value

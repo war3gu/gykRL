@@ -28,7 +28,7 @@ def ppo_loss(state_value, state_next_value, action_previous_ytrue):
 
         m1 = prob * state_adv_value
         m2 = K.clip(prob, min_value=0.8, max_value=1.2) * state_adv_value
-        m3 = -K.mean(K.minimum(m1, m2))
+        m3 = -K.sum(K.minimum(m1, m2))
 
         return m3
 
