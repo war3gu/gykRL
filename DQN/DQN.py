@@ -65,12 +65,10 @@ if __name__ == '__main__':
             for i in range(length):
                 target_next = reward_b[i]
                 if not done_b[i]:
-                    state_temp1 = next_state_b[i]
-                    state_temp1 = state_temp1[np.newaxis, :]
+                    state_temp1 = next_state_b[i:(i+1), :]
                     action_values = actor.predict(state_temp1)[0]
                     target_next = (reward_b[i] + 0.95 * np.amax(action_values))
-                state_temp2 = state_b[i]
-                state_temp2 = state_temp2[np.newaxis, :]
+                state_temp2 = state_b[i:(i+1), :]
                 target_one = actor.predict(state_temp2)[0]
                 target_one[action_b[i]] = target_next
                 target_list.append(target_one)
