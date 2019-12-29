@@ -59,20 +59,18 @@ if __name__ == '__main__':
         episode_reward += reward
 ##############################train######################
         if replayMemory.size() >= 128:
-            target_list = []
             state_b, action_b, reward_b, done_b, next_state_b, prob_b = replayMemory.miniBatch(int(64))
+            next_state_b_value = actor.predict(next_state_b)
+            state_b_value = actor.predict(state_b)
             length = state_b.shape[0]
+
             for i in range(length):
                 target_next = reward_b[i]
                 if not done_b[i]:
-                    state_temp1 = next_state_b[i:(i+1), :]
-                    action_values = actor.predict(state_temp1)[0]
+                    action_values = next_state_b_value[i]
                     target_next = (reward_b[i] + 0.95 * np.amax(action_values))
-                state_temp2 = state_b[i:(i+1), :]
-                target_one = actor.predict(state_temp2)[0]
-                target_one[action_b[i]] = target_next
-                target_list.append(target_one)
-            actor.train(state_b, np.array(target_list))
+                state_b_value[i][action_b[i]] = target_next
+            actor.train(state_b, state_b_value)
 
         if done:
             summary_str = tf.Session().run(summary_ops, feed_dict={summary_vars[0]: episode_reward})
