@@ -68,7 +68,7 @@ if __name__ == '__main__':
                 target_next = reward_b[i]
                 if not done_b[i]:
                     action_values = next_state_b_value[i]
-                    target_next = (reward_b[i] + 0.95 * np.amax(action_values))
+                    target_next = (reward_b[i] + 0.7 * np.amax(action_values))
                 state_b_value[i][action_b[i]] = target_next
             actor.train(state_b, state_b_value)
 
