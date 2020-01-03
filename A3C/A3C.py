@@ -1,15 +1,24 @@
+'''
+import sys, os
+curr_dir = os.path.dirname(os.path.realpath(__file__))
+upPath = curr_dir+'/../'
+sys.path.append(upPath)
+'''
+
 
 from multiprocessing import *
 import numpy as np
 
 import gym
 
+from keras import backend as K
+
 
 from ActingAgent import *
 from LearningAgent import *
 from build_network import *
 
-
+import tensorflow as tf
 
 import argparse
 
@@ -35,6 +44,16 @@ parser.add_argument('--beta', default=0.01, dest='beta', type=float)
 args = parser.parse_args()
 
 
+def build_summaries():
+	episode_reward =   tf.Variable(0.)
+	tf.summary.scalar("Reward",episode_reward)
+	summary_vars = [episode_reward]
+	summary_ops = tf.summary.merge_all()
+	return summary_ops, summary_vars
+
+
+
+
 # -----
 
 
@@ -55,6 +74,11 @@ def learn_proc(mem_queue, weight_dict):
     # -----
     env = gym.make(args.game)
     agent = LearningAgent(env.action_space, batch_size=args.batch_size, swap_freq=args.swap_freq, beta=args.beta)
+
+
+    summary_ops, summary_vars = build_summaries()
+    writer = tf.summary.FileWriter("./log", tf.Session().graph)
+
     # -----
     if checkpoint > 0:
         print(' %5d> Loading weights from file' % (pid,))
@@ -82,6 +106,15 @@ def learn_proc(mem_queue, weight_dict):
                 # print(' %5d> Updating weights in dict' % (pid,))
                 weight_dict['weights'] = agent.train_net.get_weights()
                 weight_dict['update'] += 1
+
+
+                op_episode_reward = K.sum(rewards)
+                episode_reward = tf.Session().run(op_episode_reward)
+                summary_str = tf.Session().run(summary_ops, feed_dict={summary_vars[0]: episode_reward})
+                writer.add_summary(summary_str, weight_dict['update'])
+                writer.flush()
+
+
         # -----
         save_counter -= 1
         if save_counter < 0:
@@ -111,6 +144,7 @@ def generate_experience_proc(mem_queue, weight_dict, no):
             time.sleep(0.1)
         agent.load_net.set_weights(weight_dict['weights']) #获取权重
         print(' %5d> Loaded weights from dict' % (pid,))
+
 
     best_score = 0
     avg_score = deque([0], maxlen=25)
@@ -148,7 +182,6 @@ def generate_experience_proc(mem_queue, weight_dict, no):
                     agent.load_net.set_weights(weight_dict['weights']) #从主线程取最新的权重
         # -----
         avg_score.append(episode_reward)
-
 
 def init_worker():
     import signal
