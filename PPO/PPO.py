@@ -17,9 +17,23 @@ from Critic import Critic
 
 from ReplayMemory import ReplayMemory
 
-
+import argparse
 
 import tensorflow as tf
+
+
+
+
+
+
+parser = argparse.ArgumentParser(description='Training model')
+parser.add_argument('--mode', default=0, help='0.train 1.play', dest='mode', type=int)
+args = parser.parse_args()
+
+mode = args.mode
+
+
+
 
 def build_summaries():
 	episode_reward =   tf.Variable(0.)
@@ -28,9 +42,8 @@ def build_summaries():
 	summary_ops = tf.summary.merge_all()
 	return summary_ops, summary_vars
 
+def train():
 
-
-if __name__ == '__main__':
     env = gym.make('LunarLander-v2')
 
     state = env.reset()
@@ -38,6 +51,11 @@ if __name__ == '__main__':
     actor = Actor(env.action_space, env.observation_space)
 
     critic = Critic(env.action_space, env.observation_space)
+
+
+    actor.load()
+    critic.load()
+
 
     replayMemory = ReplayMemory()
 
@@ -104,10 +122,69 @@ if __name__ == '__main__':
             writer.add_summary(summary_str, step)
             writer.flush()
 
-            print("step = ", step, "episode_reward = ", episode_reward)
+            ##print("step = ", step, "episode_reward = ", episode_reward)
 
             state = env.reset()
 
             episode_reward = 0
 
             step += 1
+
+            if step%25 == 0:
+                actor.save()
+                critic.save()
+
+
+def play():
+    print("play")
+
+    env = gym.make('LunarLander-v2')
+
+    state = env.reset()
+
+    actor = Actor(env.action_space, env.observation_space)
+
+    actor.load()
+
+    #critic = Critic(env.action_space, env.observation_space)
+
+    #replayMemory = ReplayMemory()
+
+    #summary_ops, summary_vars = build_summaries()
+
+    #writer = tf.summary.FileWriter("./log", tf.Session().graph)
+
+    #episode_reward = 0
+
+    #step = 1
+
+    while True:
+
+        env.render()
+
+        state1 = state[np.newaxis, :]
+
+        action, action_matrix, prob = actor.predict(state1)
+
+        next_state, reward, done, info = env.step(action)
+
+        #replayMemory.add(state, action_matrix, reward, done, next_state, prob)
+
+        state = next_state
+
+        if done:
+            #summary_str = tf.Session().run(summary_ops, feed_dict={summary_vars[0]: episode_reward})
+            #writer.add_summary(summary_str, step)
+            #writer.flush()
+            state = env.reset()
+
+    return 0
+
+
+
+if __name__ == '__main__':
+
+    if mode == 0:
+        train()
+    else:
+        play()

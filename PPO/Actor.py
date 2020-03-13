@@ -7,6 +7,8 @@ from keras.layers import Dense, Input
 from keras import backend as K
 from keras.optimizers import Adam
 
+import os
+
 
 from NoisyDense import NoisyDense
 
@@ -77,3 +79,18 @@ class Actor:
 
     def train(self, obs, state_value, state_next_value, action_previous_ytrue, action_previous_prob):
         return self.model.fit([obs, state_value, state_next_value, action_previous_ytrue], [action_previous_prob])
+
+    def save(self):
+        print("save actor")
+        self.model.save_weights('model-actor-%s.h5' % ('LunarLander-v2'), overwrite=True)
+
+    def load(self):
+        #print("load actor")
+
+        filename = 'model-actor-%s.h5' % ('LunarLander-v2')
+
+        if os.path.exists(filename):
+            self.model.load_weights(filename)
+            print("load exist actor")
+        else:
+            print("first train actor")

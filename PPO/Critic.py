@@ -7,7 +7,7 @@ from keras.layers import Input, Dense
 from keras import backend as K
 from keras.optimizers import Adam
 
-
+import os
 
 class Critic:
     def __init__(self, action_space, observation_space):
@@ -38,3 +38,19 @@ class Critic:
 
     def train(self, obs, state_next_value):
         return self.model.fit([obs], [state_next_value])
+
+    def save(self):
+        print("save critic")
+        self.model.save_weights('model-critic-%s.h5' % ('LunarLander-v2'), overwrite=True)
+
+    def load(self):
+        #print("load critic")
+
+        filename = 'model-critic-%s.h5' % ('LunarLander-v2')
+
+        if os.path.exists(filename):
+            self.model.load_weights(filename)
+            print("load exist critic")
+        else:
+            print("first train critic")
+
