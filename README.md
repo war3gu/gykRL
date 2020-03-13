@@ -3,7 +3,7 @@ PPO training curve
 
 ![Alt text](https://github.com/war3gu/gykRL/blob/master/trainning%20curve/PPO.svg)
 
-PPO play gif
+PPO playing gif
 
 ![Alt text](https://github.com/war3gu/gykRL/blob/master/play%20video/ppo.gif)
 
