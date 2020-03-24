@@ -5,7 +5,7 @@ astor==0.8.0
 atari-py==0.2.6
 attrs==19.3.0
 backcall==0.1.0
-bleach==1.5.0
+bleach==3.1.2
 Box2D-kengz==2.3.3
 cachetools==3.1.1
 certifi==2018.8.24
